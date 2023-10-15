@@ -1,6 +1,8 @@
 """
 Test for the tags API's.
 """
+from decimal import Decimal
+
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 from django.test import TestCase
@@ -8,7 +10,10 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 from rest_framework import status
 
-from core.models import Tag
+from core.models import (
+    Tag,
+    Recipe
+)
 
 from recipe.serializers import TagSerializer
 
@@ -90,3 +95,50 @@ class PrivateTagsApiTest(TestCase):
 
         self.assertEqual(res.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(Tag.objects.filter(name='Breakfast').exists())
+
+    def test_filter_tags_assigned_to_recipes_successfully(self):
+        """Test listing tags to those assigned to recipes."""
+        tag1 = Tag.objects.create(user=self.user, name='Tag1')
+        tag2 = Tag.objects.create(user=self.user, name='Tag2')
+        recipe1 = Recipe.objects.create(
+            user=self.user,
+            title='Sample recipe',
+            description='Sample description',
+            price=Decimal('5.50'),
+            time_minutes=15
+        )
+
+        recipe1.tags.add(tag1)
+
+        ser1 = TagSerializer(tag1)
+        ser2 = TagSerializer(tag2)
+
+        res = self.client.get(TAGS_URL, {'assigned_only': 1})
+
+        self.assertIn(ser1.data, res.data)
+        self.assertNotIn(ser2.data, res.data)
+
+    def test_filter_assigned_tags_unique(self):
+        """Test filtered tags return a unique list."""
+        tag1 = Tag.objects.create(user=self.user, name='Tag1')
+        Tag.objects.create(user=self.user, name='Tag2')
+        recipe1 = Recipe.objects.create(
+            user=self.user,
+            title='Sample recipe',
+            description='Sample description',
+            price=Decimal('5.50'),
+            time_minutes=15
+        )
+        recipe2 = Recipe.objects.create(
+            user=self.user,
+            title='Sample recipe2',
+            description='Sample description2',
+            price=Decimal('5.50'),
+            time_minutes=15
+        )
+        recipe1.tags.add(tag1)
+        recipe2.tags.add(tag1)
+
+        res = self.client.get(TAGS_URL, {'assigned_only': 1})
+
+        self.assertEqual(len(res.data), 1)
